@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """migrate-tags.py — Convert #tags to [[Topics/tag]] wiki-links in markdown vaults.
 
-Reusable across any Obsidian/Logseq markdown vault. Config via YAML or CLI flags.
+Reusable across any Obsidian/Capacities/Octarine/Logseq markdown vault. Config via YAML or CLI flags.
 
 Usage:
   # 1. Generate whitelist (scan vault for all #tag patterns)

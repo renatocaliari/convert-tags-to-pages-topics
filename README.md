@@ -1,6 +1,6 @@
 # convert-tags-to-pages-topics
 
-Convert `#tags` to `[[Topics/tag]]` wiki-links in markdown vaults (Obsidian, Logseq, etc).
+Convert `#tags` to `[[Topics/tag]]` wiki-links in markdown vaults (Obsidian, Capacities, Octarine, Logseq, etc).
 
 ## Problem
 
