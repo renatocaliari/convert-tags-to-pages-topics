@@ -1,0 +1,23 @@
+# migrate-tags.yaml — Config for migrate-tags.py
+# Place in vault root or pass via --config <path>
+
+# Prefix for wiki-links (default: "Topics/")
+# #SomeTag → [[Topics/SomeTag]]
+link_prefix: "Topics/"
+
+# Whitelist file (relative to vault or absolute path)
+whitelist_file: tag-whitelist.txt
+
+# Optional: auto-filter tags appearing fewer than N times
+# 0 = no auto-filter, user reviews all
+whitelist_min_count: 0
+
+# Save checkpoint.json for resume capability
+save_checkpoint: true
+
+# Special rules: override replacement for specific tags
+# Format: {tag: "TagName", replacement: "custom [[Link]] string"}
+special_rules:
+  # Example: convert a tag to multiple links
+  # - tag: "Company"
+  #   replacement: "[[Topics/Company]] · [[Organizations/MyCompany]]"
