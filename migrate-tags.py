@@ -50,6 +50,7 @@ DEFAULT_CONFIG = {
     "special_rules": [],
     "batch_size": 0,
     "save_checkpoint": True,
+    "topic_type": None,
 }
 
 
@@ -95,6 +96,11 @@ def parse_args():
         action="store_true",
         help="Skip creating Topic stub pages; only convert #tag references",
     )
+    parser.add_argument(
+        "--topic-type",
+        default=None,
+        help="Add type frontmatter to Topic pages (e.g. 'Topic' for Tolaria/Octarine)",
+    )
     return parser.parse_args()
 
 
@@ -122,6 +128,7 @@ def load_config(args):
     config["resume"] = args.resume
     config["generate_whitelist"] = args.generate_whitelist
     config["links_only"] = args.links_only
+    config["topic_type"] = args.topic_type or config.get("topic_type")
     if args.batch:
         config["batch_size"] = args.batch
 
@@ -466,15 +473,63 @@ def process_file(filepath: Path, tags_set: set[str], special: dict[str, str],
 # ── TOPIC PAGE CREATION ────────────────────────────────────────────────────────
 
 
-def create_topic_pages(vault: Path, whitelist: set[str], prefix: str, dry_run: bool, links_only: bool) -> int:
+def _topic_stub_content(tag: str, topic_type: str | None) -> str:
+    """Build content for a Topic stub page.
+
+    If ``topic_type`` is set, includes type frontmatter for Tolaria/Octarine.
+    """
+    if topic_type:
+        return f"---\ntype: {topic_type}\n---\n\n# {tag}\n"
+    return f"# {tag}\n"
+
+
+def _ensure_topic_type(topics_dir: Path, topic_type: str, dry_run: bool) -> int:
+    """Patch existing Topic files that lack ``type: Topic`` in frontmatter.
+
+    Scans ``Topics/`` for .md files without a type frontmatter and adds one.
+    Returns number of files patched.
+    """
+    if not topics_dir.exists():
+        return 0
+
+    patched = 0
+    for filepath in sorted(topics_dir.rglob("*.md")):
+        try:
+            text = filepath.read_text(encoding="utf-8")
+        except Exception:
+            continue
+
+        # Skip if already has type frontmatter
+        if text.startswith("---"):
+            close = text.find("---", 3)
+            if close != -1 and "type:" in text[3:close]:
+                continue
+
+        # Skip empty files
+        if not text.strip():
+            continue
+
+        # Add frontmatter with type
+        new_text = f"---\ntype: {topic_type}\n---\n\n{text}"
+        if not dry_run:
+            filepath.write_text(new_text, encoding="utf-8")
+        patched += 1
+
+    return patched
+
+
+def create_topic_pages(vault: Path, whitelist: set[str], prefix: str,
+                       dry_run: bool, links_only: bool,
+                       topic_type: str | None = None) -> int:
     """Create stub .md files for each whitelisted tag under Topics/.
 
     - ``#Tag`` -> ``Topics/Tag.md``
     - ``#A/B/C`` -> ``Topics/A/B/C.md`` (creates subdirectories)
     - Skips if file already exists (does not overwrite).
+    - Patches existing files missing type frontmatter (Tolaria/Octarine).
     - Does nothing if ``--links-only`` (returns 0).
 
-    Returns number of files created.
+    Returns number of files created + patched.
     """
     if links_only:
         return 0
@@ -483,8 +538,10 @@ def create_topic_pages(vault: Path, whitelist: set[str], prefix: str, dry_run: b
     created = 0
     skipped = 0
 
+    # Patch existing files that lack type frontmatter
+    patched = _ensure_topic_type(topics_dir, topic_type, dry_run) if topic_type else 0
+
     for tag in sorted(whitelist, key=str.lower):
-        # Compute path: "Health/Sleep" -> Topics/Health/Sleep.md
         filepath = (topics_dir / tag).with_suffix(".md")
 
         if dry_run:
@@ -498,22 +555,26 @@ def create_topic_pages(vault: Path, whitelist: set[str], prefix: str, dry_run: b
             skipped += 1
             continue
 
-        # Safety: skip if filename would be too long for the filesystem
         try:
-            # Probe by creating parent and testing a stat
             filepath.parent.mkdir(parents=True, exist_ok=True)
-            # Touch with empty content first to validate path length
-            filepath.write_text(f"# {tag}\n", encoding="utf-8")
+            content = _topic_stub_content(tag, topic_type)
+            filepath.write_text(content, encoding="utf-8")
         except OSError as e:
             print(f"  [WARN] Skipping topic page for '{tag}': {e}")
-            # Clean up empty parent if we created it
             continue
         created += 1
 
     total = created + skipped
     if total > 0:
-        print(f"  Topic pages: {created} created, {skipped} already exist")
-    return created
+        parts = []
+        if created:
+            parts.append(f"{created} created")
+        if patched:
+            parts.append(f"{patched} patched (added type frontmatter)")
+        if skipped - patched > 0:
+            parts.append(f"{skipped - patched} already exist")
+        print(f"  Topic pages: {', '.join(parts)}")
+    return created + patched
 
 
 # ── MAIN ─────────────────────────────────────────────────────────────────────
@@ -550,7 +611,8 @@ def main():
     if not links_only:
         topic_dir = vault / prefix.rstrip("/")
         print(f"  Topic dir: {topic_dir}")
-    pages_created = create_topic_pages(vault, whitelist, prefix, dry_run, links_only)
+    topic_type = config.get("topic_type")
+    pages_created = create_topic_pages(vault, whitelist, prefix, dry_run, links_only, topic_type)
     print()
 
     # Collect files

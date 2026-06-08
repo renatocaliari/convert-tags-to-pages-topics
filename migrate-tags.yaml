@@ -15,6 +15,10 @@ whitelist_min_count: 0
 # Save checkpoint.json for resume capability
 save_checkpoint: true
 
+# Add type frontmatter to Topic stub pages (e.g. "Topic" for Tolaria/Octarine)
+# Set to a string value to enable, or omit/null to skip
+# topic_type: "Topic"
+
 # Special rules: override replacement for specific tags
 # Format: {tag: "TagName", replacement: "custom [[Link]] string"}
 special_rules:
