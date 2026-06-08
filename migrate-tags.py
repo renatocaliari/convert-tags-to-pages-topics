@@ -90,6 +90,11 @@ def parse_args():
         default=0,
         help="Process N files then pause (for git-commit between batches)",
     )
+    parser.add_argument(
+        "--links-only",
+        action="store_true",
+        help="Skip creating Topic stub pages; only convert #tag references",
+    )
     return parser.parse_args()
 
 
@@ -116,6 +121,7 @@ def load_config(args):
     config["dry_run"] = args.dry_run
     config["resume"] = args.resume
     config["generate_whitelist"] = args.generate_whitelist
+    config["links_only"] = args.links_only
     if args.batch:
         config["batch_size"] = args.batch
 
@@ -449,6 +455,54 @@ def process_file(filepath: Path, tags_set: set[str], special: dict[str, str],
     return changed
 
 
+# ── TOPIC PAGE CREATION ────────────────────────────────────────────────────────
+
+
+def create_topic_pages(vault: Path, whitelist: set[str], prefix: str, dry_run: bool, links_only: bool) -> int:
+    """Create stub .md files for each whitelisted tag under Topics/.
+
+    - ``#Tag`` -> ``Topics/Tag.md``
+    - ``#A/B/C`` -> ``Topics/A/B/C.md`` (creates subdirectories)
+    - Skips if file already exists (does not overwrite).
+    - Does nothing if ``--links-only`` (returns 0).
+
+    Returns number of files created.
+    """
+    if links_only:
+        return 0
+
+    topics_dir = vault / prefix.rstrip("/")
+    created = 0
+    skipped = 0
+
+    for tag in sorted(whitelist, key=str.lower):
+        # Compute path: "Health/Sleep" -> Topics/Health/Sleep.md
+        filepath = (topics_dir / tag).with_suffix(".md")
+
+        if dry_run:
+            if filepath.exists():
+                skipped += 1
+            else:
+                created += 1
+            continue
+
+        if filepath.exists():
+            skipped += 1
+            continue
+
+        # Create parent directory (e.g. Topics/Health/ for Health/Sleep)
+        filepath.parent.mkdir(parents=True, exist_ok=True)
+
+        # Write stub with tag name as H1
+        filepath.write_text(f"# {tag}\n", encoding="utf-8")
+        created += 1
+
+    total = created + skipped
+    if total > 0:
+        print(f"  Topic pages: {created} created, {skipped} already exist")
+    return created
+
+
 # ── MAIN ─────────────────────────────────────────────────────────────────────
 
 
@@ -475,6 +529,16 @@ def main():
 
     print(f"  Tags: {len(whitelist)} whitelisted, {len(special_map)} special rules")
     print(f"  Prefix: [[{prefix}{{tag}}]]\n")
+
+    dry_run = config.get("dry_run", False)
+    links_only = config.get("links_only", False)
+
+    # Create topic stub pages (unless --links-only)
+    if not links_only:
+        topic_dir = vault / prefix.rstrip("/")
+        print(f"  Topic dir: {topic_dir}")
+    pages_created = create_topic_pages(vault, whitelist, prefix, dry_run, links_only)
+    print()
 
     # Collect files
     md_files = sorted(vault.rglob("*.md"))
