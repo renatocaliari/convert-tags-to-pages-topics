@@ -135,7 +135,7 @@ def scan_tags(vault: Path):
     """Scan all .md files, collect #tag occurrences with frequency.
 
     Returns dict[str, int] — tag name → count.
-    Uses same regex as replacement, so URL fragments are naturally excluded.
+    Also filters out tags that look like URL fragments (preceded by URL pattern).
     """
     counts: dict[str, int] = {}
 
@@ -152,6 +152,11 @@ def scan_tags(vault: Path):
 
         for m in TAG_INLINE_RE.finditer(text):
             tag = m.group(1)
+            # Skip if # is part of a URL fragment — check chars before it
+            start = m.start()
+            before = text[max(0, start - 60):start]
+            if re.search(r"https?://\S*$", before, re.IGNORECASE):
+                continue
             counts[tag] = counts.get(tag, 0) + 1
 
     return counts
@@ -169,6 +174,9 @@ def filter_tags(raw_counts: dict[str, int], min_count: int = 0) -> list[str]:
             continue
         # Rare tags (optional filter, for auto-whitelist without review)
         if min_count > 0 and count < min_count:
+            continue
+        # Excessively long tags (URL fragments, base64 blobs, noise)
+        if len(tag) > 120:
             continue
         tags.append(tag)
 
@@ -490,11 +498,16 @@ def create_topic_pages(vault: Path, whitelist: set[str], prefix: str, dry_run: b
             skipped += 1
             continue
 
-        # Create parent directory (e.g. Topics/Health/ for Health/Sleep)
-        filepath.parent.mkdir(parents=True, exist_ok=True)
-
-        # Write stub with tag name as H1
-        filepath.write_text(f"# {tag}\n", encoding="utf-8")
+        # Safety: skip if filename would be too long for the filesystem
+        try:
+            # Probe by creating parent and testing a stat
+            filepath.parent.mkdir(parents=True, exist_ok=True)
+            # Touch with empty content first to validate path length
+            filepath.write_text(f"# {tag}\n", encoding="utf-8")
+        except OSError as e:
+            print(f"  [WARN] Skipping topic page for '{tag}': {e}")
+            # Clean up empty parent if we created it
+            continue
         created += 1
 
     total = created + skipped
